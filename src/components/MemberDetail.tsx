@@ -66,13 +66,13 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
           <strong>Giới tính:</strong> {member.gender}
         </div>
         {member.birthDate && (
-          <div className="detail-row">
-            <strong>Năm sinh:</strong> {extractYear(member.birthDate)}
-          </div>
+            <div className="detail-row">
+            <strong>Năm sinh:</strong> {member.birthDate.match(/^\d{2}\/\d{2}\/\d{4}$/) ? member.birthDate : extractYear(member.birthDate)}
+            </div>
         )}
         {member.deathDate && (
           <div className="detail-row">
-            <strong>Năm mất:</strong> {extractYear(member.deathDate || '')}
+            <strong>Năm mất:</strong> {member.deathDate.match(/^\d{2}\/\d{2}\/\d{4}$/) ? member.deathDate : extractYear(member.deathDate || '')}
           </div>
         )}
         {member.note && (
@@ -127,11 +127,9 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
           <button className="btn btn-action btn-add-child" onClick={() => onAddChild?.(member)}>
             👶 Thêm con
           </button>
-          {!spouse && (
-            <button className="btn btn-action btn-add-spouse" onClick={() => onAddSpouse?.(member)}>
-              💍 Thêm vợ/chồng
-            </button>
-          )}
+          <button className="btn btn-action btn-add-spouse" onClick={() => onAddSpouse?.(member)}>
+            💍 Thêm vợ/chồng
+          </button>
           {(!father || !mother) && (
             <button className="btn btn-action btn-add-ancestor" onClick={() => onAddAncestor?.(member)}>
               👴 Thêm cha/mẹ

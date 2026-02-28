@@ -57,10 +57,38 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ members, onSelectMember, select
   const findCoupleForPerson = (personId: number): Couple | undefined =>
     allCouples.get(personId);
 
-  const findCoupleWhereMotherIs = (personId: number): Couple | undefined => {
-    let found: Couple | undefined;
+  /** Find all spouses of a person (bidirectional spouseId lookup) */
+  const findAllSpouses = (personId: number): FamilyMember[] => {
+    const spouseIds = new Set<number>();
+    const person = members.find(m => m.id === personId);
+    if (person?.spouseId) spouseIds.add(person.spouseId);
+    // Also find members whose spouseId points to this person
+    members.forEach(m => {
+      if (m.spouseId === personId && m.id !== personId) spouseIds.add(m.id);
+    });
+    return Array.from(spouseIds)
+      .map(id => members.find(m => m.id === id))
+      .filter((m): m is FamilyMember => !!m);
+  };
+
+  /** Merge additional spouses (from spouseId links) into a couple's mothers list */
+  const mergeSpousesIntoCouple = (couple: Couple): Couple => {
+    if (!couple.father) return couple;
+    const allSpouses = findAllSpouses(couple.father.id);
+    const existingMotherIds = new Set(couple.mothers.map(m => m.id));
+    const extraMothers = allSpouses.filter(s => !existingMotherIds.has(s.id));
+    if (extraMothers.length === 0) return couple;
+    return {
+      ...couple,
+      mothers: [...couple.mothers, ...extraMothers],
+    };
+  };
+
+  /** Find ALL couples where a person is a mother */
+  const findAllCouplesWhereMotherIs = (personId: number): Couple[] => {
+    const found: Couple[] = [];
     allCouples.forEach(couple => {
-      if (couple.mothers.some(m => m.id === personId)) found = couple;
+      if (couple.mothers.some(m => m.id === personId)) found.push(couple);
     });
     return found;
   };
@@ -129,6 +157,18 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ members, onSelectMember, select
     couple.mothers.forEach(m => membersInCouples.add(m.id));
     couple.childrenByMother.forEach(kids => kids.forEach(k => membersInCouples.add(k.id)));
   });
+
+  // Also exclude spouses of members already in couples (they render in pseudo-couples)
+  members.forEach(m => {
+    if (membersInCouples.has(m.id) && m.spouseId) {
+      membersInCouples.add(m.spouseId);
+    }
+    // Also exclude if someone in a couple references this member as spouse
+    if (m.spouseId && membersInCouples.has(m.spouseId)) {
+      membersInCouples.add(m.id);
+    }
+  });
+
   const standaloneMembers = members.filter(m => !membersInCouples.has(m.id));
 
   if (rootCouples.length === 0 && standaloneMembers.length === 0) {
@@ -152,7 +192,7 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ members, onSelectMember, select
   const renderPersonCard = (member: FamilyMember) => {
     const isMale = member.gender === 'Nam' || member.gender === 'male';
     const isSelected = member.id === selectedMemberId;
-    const gen = genCache.get(member.id) || null;
+    const gen = (genCache.get(member.id) || 0) + 14;
     const isDeceased = !!member.deathDate;
 
     return (
@@ -215,18 +255,117 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ members, onSelectMember, select
     const childCouple = findCoupleForPerson(child.id);
     if (childCouple) return renderFamilyUnit(childCouple);
 
-    // Child is a mother in a couple
-    const childCoupleAsMother = findCoupleWhereMotherIs(child.id);
-    if (childCoupleAsMother) return renderFamilyUnit(childCoupleAsMother);
+    // Child is a mother in one or more couples (each couple has a different husband/father)
+    const childCouplesAsMother = findAllCouplesWhereMotherIs(child.id);
+    if (childCouplesAsMother.length > 0) {
+      // Gather husband IDs already in couples
+      const coupledHusbandIds = new Set(
+        childCouplesAsMother.map(c => c.father?.id).filter((id): id is number => !!id),
+      );
 
-    // Has spouse but no children recorded
-    if (child.spouseId) {
-      const spouse = members.find(m => m.id === child.spouseId);
-      if (spouse) {
-        const isMale = child.gender === 'Nam' || child.gender === 'male';
-        const pseudoCouple: Couple = isMale
-          ? { father: child, mothers: [spouse], childrenByMother: new Map() }
-          : { father: spouse, mothers: [child], childrenByMother: new Map() };
+      // Find extra husbands via spouseId not represented in any couple
+      const allHusbands = findAllSpouses(child.id).filter(
+        s => (s.gender === 'Nam' || s.gender === 'male') && !coupledHusbandIds.has(s.id),
+      );
+
+      // Multiple husbands → render mother in center with husbands on same row
+      if (childCouplesAsMother.length === 1 && allHusbands.length === 0) {
+        return renderFamilyUnit(childCouplesAsMother[0]);
+      }
+
+      // Collect all husbands (from couples + extra) and all children
+      const allCoupleChildren: FamilyMember[] = [];
+      const allHusbandMembers: FamilyMember[] = [];
+      childCouplesAsMother.forEach(couple => {
+        if (couple.father) allHusbandMembers.push(couple.father);
+        getAllChildren(couple).forEach(c => allCoupleChildren.push(c));
+      });
+      allHusbands.forEach(h => allHusbandMembers.push(h));
+
+      // Build a horizontal couple card: husband1 ♥ mother ♥ husband2
+      const renderMultiHusbandCard = () => (
+        <div className="ft-couple">
+          {allHusbandMembers.map((husband, idx) => (
+            <React.Fragment key={husband.id}>
+              {idx > 0 && (
+                <div className="ft-bond">
+                  <div className="ft-bond-line" />
+                  <span className="ft-bond-heart">♥</span>
+                  <div className="ft-bond-line" />
+                </div>
+              )}
+              {renderPersonCard(husband)}
+              {idx === 0 && (
+                <>
+                  <div className="ft-bond">
+                    <div className="ft-bond-line" />
+                    <span className="ft-bond-heart">♥</span>
+                    <div className="ft-bond-line" />
+                  </div>
+                  {renderPersonCard(child)}
+                </>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      );
+
+      return (
+        <li key={child.id}>
+          {renderMultiHusbandCard()}
+          {allCoupleChildren.length > 0 && (
+            <ul>{allCoupleChildren.map(c => renderChildNode(c))}</ul>
+          )}
+        </li>
+      );
+    }
+
+    // Has spouse(s) but no children recorded
+    const allSpouses = findAllSpouses(child.id);
+    if (allSpouses.length > 0) {
+      const isMale = child.gender === 'Nam' || child.gender === 'male';
+      if (isMale) {
+        const pseudoCouple: Couple = { father: child, mothers: allSpouses, childrenByMother: new Map() };
+        return <li key={child.id}>{allSpouses.length >= 2 ? renderFamilyUnit(pseudoCouple) : renderCoupleCard(pseudoCouple)}</li>;
+      } else {
+        // child is female with husband(s) but no children
+        const husbands = allSpouses.filter(s => s.gender === 'Nam' || s.gender === 'male');
+        if (husbands.length >= 2) {
+          // Multiple husbands, no children → all on same row
+          const renderMultiHusbandRow = () => (
+            <div className="ft-couple">
+              {husbands.map((husband, idx) => (
+                <React.Fragment key={husband.id}>
+                  {idx > 0 && (
+                    <div className="ft-bond">
+                      <div className="ft-bond-line" />
+                      <span className="ft-bond-heart">♥</span>
+                      <div className="ft-bond-line" />
+                    </div>
+                  )}
+                  {renderPersonCard(husband)}
+                  {idx === 0 && (
+                    <>
+                      <div className="ft-bond">
+                        <div className="ft-bond-line" />
+                        <span className="ft-bond-heart">♥</span>
+                        <div className="ft-bond-line" />
+                      </div>
+                      {renderPersonCard(child)}
+                    </>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          );
+          return <li key={child.id}>{renderMultiHusbandRow()}</li>;
+        }
+        if (husbands.length === 1) {
+          const pseudoCouple: Couple = { father: husbands[0], mothers: [child], childrenByMother: new Map() };
+          return <li key={child.id}>{renderCoupleCard(pseudoCouple)}</li>;
+        }
+        // No male spouse found, use first spouse as "father"
+        const pseudoCouple: Couple = { father: allSpouses[0], mothers: [child], childrenByMother: new Map() };
         return <li key={child.id}>{renderCoupleCard(pseudoCouple)}</li>;
       }
     }
@@ -243,44 +382,15 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ members, onSelectMember, select
 
   /** Recursive family unit: couple + children */
   const renderFamilyUnit = (couple: Couple): React.ReactNode => {
-    const key = couple.father?.id || couple.mothers[0]?.id || 0;
+    // Merge in any spouses linked via spouseId but not yet in mothers
+    const mergedCouple = mergeSpousesIntoCouple(couple);
+    const key = mergedCouple.father?.id || mergedCouple.mothers[0]?.id || 0;
 
-    // ── Multiple mothers → split into separate branches per wife ──
-    if (couple.mothers.length >= 2) {
-      const orphanChildren = getChildrenOfMother(couple, 0);
-
-      return (
-        <li key={key}>
-          {/* Father shown alone at top */}
-          {couple.father && renderPersonCard(couple.father)}
-
-          <ul>
-            {couple.mothers.map(mother => {
-              const motherChildren = getChildrenOfMother(couple, mother.id);
-              return (
-                <li key={mother.id} className="wife-branch">
-                  <div className="ft-wife-header">
-                    <div className="ft-bond-indicator">♥</div>
-                    {renderPersonCard(mother)}
-                  </div>
-                  {motherChildren.length > 0 && (
-                    <ul>{motherChildren.map(child => renderChildNode(child))}</ul>
-                  )}
-                </li>
-              );
-            })}
-            {/* Children without recorded mother */}
-            {orphanChildren.map(child => renderChildNode(child))}
-          </ul>
-        </li>
-      );
-    }
-
-    // ── Single mother (or none) → original couple card layout ──
-    const children = getAllChildren(couple);
+    // ── All spouses on the same row, children grouped below ──
+    const children = getAllChildren(mergedCouple);
     return (
       <li key={key}>
-        {renderCoupleCard(couple)}
+        {renderCoupleCard(mergedCouple)}
         {children.length > 0 && (
           <ul>{children.map(child => renderChildNode(child))}</ul>
         )}
