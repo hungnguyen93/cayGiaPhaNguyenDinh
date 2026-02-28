@@ -212,7 +212,19 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ members, onSelectMember, select
             {member.birthDate ? extractYear(member.birthDate) : '?'}{member.deathDate ? ` – ${extractYear(member.deathDate)}` : ''}
           </div>
         )}
-        {member.note && <div className="ft-note">{member.note}</div>}
+        {member.note && (
+          <div
+            className="ft-note"
+            style={{
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
+            }}
+            title={member.note}
+          >
+            {member.note}
+          </div>
+        )}
       </div>
     );
   };
@@ -372,12 +384,6 @@ const FamilyTree: React.FC<FamilyTreeProps> = ({ members, onSelectMember, select
 
     // Single person
     return <li key={child.id}>{renderPersonCard(child)}</li>;
-  };
-
-  /** Get sorted children for a specific mother */
-  const getChildrenOfMother = (couple: Couple, motherId: number): FamilyMember[] => {
-    const kids = couple.childrenByMother.get(motherId) || [];
-    return [...kids].sort((a, b) => parseDateStr(a.birthDate) - parseDateStr(b.birthDate));
   };
 
   /** Recursive family unit: couple + children */

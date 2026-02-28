@@ -49,6 +49,9 @@ function App() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editMember, setEditMember] = useState<FamilyMember | null>(null);
 
+  // Hamburger menu state
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -242,39 +245,52 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>🌳 Cây Gia Phả</h1>
-        <div className="upload-section">
-          <label htmlFor="file-upload" className="upload-button">
+      {/* Hamburger menu */}
+      <div className="hamburger-wrapper">
+        <button
+          className={`hamburger-btn ${menuOpen ? 'open' : ''}`}
+          onClick={() => setMenuOpen(o => !o)}
+          aria-label="Menu"
+        >
+          <span className="hamburger-line" />
+          <span className="hamburger-line" />
+          <span className="hamburger-line" />
+        </button>
+
+        <div className={`hamburger-menu ${menuOpen ? 'open' : ''}`}>
+          <label htmlFor="file-upload" className="menu-item" onClick={() => setMenuOpen(false)}>
             📁 Tải file Excel
           </label>
           <input
             id="file-upload"
             type="file"
             accept=".xlsx,.xls"
-            onChange={handleFileUpload}
+            onChange={(e) => { handleFileUpload(e); setMenuOpen(false); }}
             style={{ display: 'none' }}
           />
           <a
             href="/giapha-mau.xlsx"
             download="giapha-mau.xlsx"
-            className="download-link"
+            className="menu-item"
+            onClick={() => setMenuOpen(false)}
           >
             ⬇️ Tải file mẫu
           </a>
-
           {members.length > 0 && (
             <>
-              <button className="header-btn btn-add-root" onClick={() => openAddModal('root')}>
+              <button className="menu-item" onClick={() => { openAddModal('root'); setMenuOpen(false); }}>
                 ➕ Thêm người
               </button>
-              <button className="header-btn btn-export" onClick={handleExport}>
+              <button className="menu-item" onClick={() => { handleExport(); setMenuOpen(false); }}>
                 💾 Xuất Excel
               </button>
             </>
           )}
         </div>
-      </header>
+      </div>
+
+      {/* Overlay to close menu */}
+      {menuOpen && <div className="hamburger-overlay" onClick={() => setMenuOpen(false)} />}
 
       <div className="main-content">
         <div className="tree-container">
@@ -302,12 +318,24 @@ function App() {
               doubleClick={{ disabled: false }}
               panning={{ disabled: false }}
             >
-              {({ zoomIn, zoomOut, resetTransform }) => (
+              {({ zoomIn, zoomOut, resetTransform, setTransform }) => {
+                const handleReset = () => {
+                  resetTransform();
+                  // Scroll to the first root node after reset
+                  setTimeout(() => {
+                    const firstNode = document.querySelector('.genealogy-tree .ft-person');
+                    if (firstNode) {
+                      firstNode.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                      setTransform(0, 0, 1);
+                    }
+                  }, 100);
+                };
+                return (
                 <>
                   <div className="zoom-controls">
                     <button onClick={() => zoomIn()} className="zoom-button">➕ Zoom In</button>
                     <button onClick={() => zoomOut()} className="zoom-button">➖ Zoom Out</button>
-                    <button onClick={() => resetTransform()} className="zoom-button">🔄 Reset</button>
+                    <button onClick={handleReset} className="zoom-button">🔄 Reset</button>
                   </div>
                   <TransformComponent
                     wrapperStyle={{ width: '100%', height: '100%' }}
@@ -320,7 +348,8 @@ function App() {
                     />
                   </TransformComponent>
                 </>
-              )}
+                );
+              }}
             </TransformWrapper>
           )}
         </div>
