@@ -333,9 +333,9 @@ function App() {
                 return (
                 <>
                   <div className="zoom-controls">
-                    <button onClick={() => zoomIn()} className="zoom-button">➕ Zoom In</button>
-                    <button onClick={() => zoomOut()} className="zoom-button">➖ Zoom Out</button>
-                    <button onClick={handleReset} className="zoom-button">🔄 Reset</button>
+                    <button onClick={() => zoomIn()} className="zoom-button">➕</button>
+                    <button onClick={() => zoomOut()} className="zoom-button">➖</button>
+                    <button onClick={handleReset} className="zoom-button">🔄</button>
                   </div>
                   <TransformComponent
                     wrapperStyle={{ width: '100%', height: '100%' }}
